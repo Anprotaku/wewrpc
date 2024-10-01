@@ -1,3 +1,6 @@
+import { nanoid } from 'nanoid';
+
+
 export type FunctionMap = {
     [key: string]: (...args: any[]) => Promise<any> | any; // Supports async and sync functions
 };
@@ -43,45 +46,65 @@ export class MessageHandler<OtherFunctions extends FunctionMap> {
         this.messageObject = messageObject;
         this.functions = functions;
 
-
         this.messageObject.onmessage = async (message: MessageEvent<WorkerMessage>) => {
-            switch (message.data.type) {
-                case MESSAGE_TYPE.FUNCTION_CALL: {
-                    const { functionName, data, messageId } = message.data.payLoad;
-
-                    const result = await this.functions[functionName](...data);
-                    this.sendMessage({
-                        type: MESSAGE_TYPE.FUNCTION_RESULT,
-                        payLoad: { returnData: result, messageId },
-                    });
-
-                    //console.log(`Function call: ${functionName}, data:`, data, `messageId: ${messageId}`);
-                    break;
-                }
-                case MESSAGE_TYPE.FUNCTION_RESULT: {
-                    const { returnData, error, messageId } = message.data.payLoad;
-                    if (error) {
-                        console.error(`Error from messageId ${messageId}:`, error);
-                    } else {
-                     //   console.log(`Result from messageId ${messageId}:`, returnData);
-                    }
-                    const callback = this.callbacks.get(messageId);
-                    if (callback) {
-                        if (error) {
-                            callback(Promise.reject(new Error(error)));
-                        } else {
-                            callback(Promise.resolve(returnData));
-                        }
-                        this.callbacks.delete(messageId); // Remove after handling
-                    }
-                    break;
-                }
-                default: {
-                    console.error('Unknown message type:', message);
-                    break;
+            const { type, payLoad } = message.data;
+        
+            if (type === MESSAGE_TYPE.FUNCTION_CALL) {
+                const { functionName, data, messageId } = payLoad;
+                const result = await this.functions[functionName](...data);
+                this.sendMessage({ 
+                    type: MESSAGE_TYPE.FUNCTION_RESULT, 
+                    payLoad: { returnData: result, messageId }
+                });
+            } else if (type === MESSAGE_TYPE.FUNCTION_RESULT) {
+                const { returnData, error, messageId } = payLoad;
+                const callback = this.callbacks.get(messageId);
+        
+                if (callback) {
+                    callback(error ? Promise.reject(new Error(error)) : Promise.resolve(returnData));
+                    this.callbacks.delete(messageId);
                 }
             }
         };
+        
+        // this.messageObject.onmessage = async (message: MessageEvent<WorkerMessage>) => {
+        //     switch (message.data.type) {
+        //         case MESSAGE_TYPE.FUNCTION_CALL: {
+        //             const { functionName, data, messageId } = message.data.payLoad;
+
+        //             const result = await this.functions[functionName](...data);
+        //             this.sendMessage({
+        //                 type: MESSAGE_TYPE.FUNCTION_RESULT,
+        //                 payLoad: { returnData: result, messageId },
+        //             });
+
+        //             //console.log(`Function call: ${functionName}, data:`, data, `messageId: ${messageId}`);
+        //             break;
+        //         }
+        //         case MESSAGE_TYPE.FUNCTION_RESULT: {
+        //             const { returnData, error, messageId } = message.data.payLoad;
+        //             if (error) {
+        //                 console.error(`Error from messageId ${messageId}:`, error);
+        //             } else {
+        //              //   console.log(`Result from messageId ${messageId}:`, returnData);
+        //             }
+        //             const callback = this.callbacks.get(messageId);
+        //             if (callback) {
+        //                 if (error) {
+        //                     callback(Promise.reject(new Error(error)));
+        //                 } else {
+        //                     callback(Promise.resolve(returnData));
+        //                 }
+        //                 this.callbacks.delete(messageId); // Remove after handling
+        //             }
+        //             break;
+        //         }
+        //         default: {
+        //             console.error('Unknown message type:', message);
+        //             break;
+        //         }
+        //     }
+        // };
     }
     
     public get remote(): { [K in keyof OtherFunctions]: (...args: Parameters<OtherFunctions[K]>) => Promise<Awaited<ReturnType<OtherFunctions[K]>>> } {
@@ -96,14 +119,12 @@ export class MessageHandler<OtherFunctions extends FunctionMap> {
         }) as { [K in keyof OtherFunctions]: (...args: Parameters<OtherFunctions[K]>) => Promise<Awaited<ReturnType<OtherFunctions[K]>>> };
     }
 
-
-
     public callFunction<K extends keyof OtherFunctions>(
         functionName: K,
         ...args: Parameters<OtherFunctions[K]>
     ): ReturnType<OtherFunctions[K]> {
         return new Promise((resolve, reject) => {
-            const messageId = globalThis.crypto.randomUUID();
+            const messageId = nanoid();
             this.callbacks.set(messageId, resolve);
 
             this.sendMessage({

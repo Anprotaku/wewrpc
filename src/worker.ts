@@ -6,7 +6,7 @@ const localFunctions = {
     add: (a: number, b: number) => {
         return a + b;
     },
-    addInf: (...numbers: number[]) => {
+    addInf: (numbers: number[]) => {
         return numbers.reduce((partialSum, a) => partialSum + a, 0);
     },
     generateRandomList: (n: number): number[] => {
@@ -28,3 +28,4 @@ const mainConcatData = await workerMessageHandler.remote.concat("Hello,", "World
 
 console.log("worker got from main: ", mainSubData);
 console.log("worker got from main: ", mainConcatData);
+
